@@ -1,0 +1,9 @@
+.Rproj.user
+.Rhistory
+*.RData
+.Ruserdata
+GMMFits/
+models_rds/
+Objects_plots/
+*.png
+*.csv
