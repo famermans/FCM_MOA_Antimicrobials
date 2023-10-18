@@ -10,7 +10,7 @@ plot_beta_fcm_custom <- function (x, color = NA, shape = NA, size = NA, labels =
     legend.ops <- FALSE
   }
   if (sum(is.na(size)) > 0) {
-    shape = rep("f3", nrow(x$points))
+    size = rep("f3", nrow(x$points))
     legend.ops <- FALSE
   }
   var.pcoa <- vegan::eigenvals(x)/sum(vegan::eigenvals(x))

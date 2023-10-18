@@ -30,6 +30,7 @@ library(pairwiseAdonis)
 #library(ROCR)
 library(mltools)
 library(data.table)
+library(ggdendro)
 
 # Make R use multiple cores
 # nCores <- detectCores()
@@ -296,6 +297,217 @@ xyplot(`BL1-H`~`SSC-H`, data = flowData_transformed_Fn_gated,
        axis = axis.default, nbin = 125, main = "Side scatter vs green fluorescence (SSC-H vs BL1-H) gated Fn", xlab = "SSC-H", ylab = "BL1-H",
        par.strip.text = list(col = "white", font = 1, cex = 1), smooth = F)
 
+
+## 4.3. Intact-damaged gating ----
+# Construction of gates
+# Live gate
+sqrcut_intact <- matrix(c(6.7, 6.7, 7.9, 14.5, 14.5,
+                          4, 5.8, 7.9, 14, 7.5), ncol = 2, nrow = 5)
+colnames(sqrcut_intact) <- c("BL1-H", "BL3-H")
+polyGateIntact <- polygonGate(.gate = sqrcut_intact, filterId = "Intact_Cells")
+
+# Dead gate
+sqrcut_damaged <- matrix(c(7.9, 7.9, 7, 7.3, 14.5, 14.5,
+                           7.9, 8.9, 8.9, 14.7, 14.7, 14), ncol = 2, nrow = 6)
+colnames(sqrcut_damaged) <- c("BL1-H", "BL3-H")
+polyGateDamaged <- polygonGate(.gate = sqrcut_damaged, filterID = "Damaged_Cells")
+
+# Create a "filters" object containing the gates
+IntactDamagedGates <- filters(list(polyGateIntact, polyGateDamaged))
+
+IntactDamagedGates_Av <- rep(list(IntactDamagedGates), length(flowData_transformed_Av))
+names(IntactDamagedGates_Av) <- sampleNames(flowData_transformed_Av)
+
+IntactDamagedGates_Fn <- rep(list(IntactDamagedGates), length(flowData_transformed_Fn))
+names(IntactDamagedGates_Fn) <- sampleNames(flowData_transformed_Fn)
+
+# Gating quality check
+xyplot(`BL3-H`~`BL1-H`, data = flowData_transformed_Av, filter = IntactDamagedGates_Av,
+       scales = list(y = list(limits = c(4, 15)),
+                     x = list(limits = c(6, 15))),
+       axis = axis.default, nbin = 125, main = "Quality check gating BL1-BL3 Av", xlab = "BL1-H", ylab = "BL3-H",
+       par.strip.text = list(col = "white", font = 1, cex = 1), smooth = FALSE)
+
+xyplot(`BL3-H`~`BL1-H`, data = flowData_transformed_Fn, filter = IntactDamagedGates_Fn,
+       scales = list(y = list(limits = c(4, 15)),
+                     x = list(limits = c(6, 15))),
+       axis = axis.default, nbin = 125, main = "Quality check gating BL1-BL3 Fn", xlab = "BL1-H", ylab = "BL3-H",
+       par.strip.text = list(col = "white", font = 1, cex = 1), smooth = FALSE)
+
+# Figures gating strategy
+p_gating_strat_Av <- xyplot(`BL3-H`~`BL1-H`, data = flowData_transformed_Av[c(13, 14, 19, 40)], filter = IntactDamagedGates_Av,
+                            scales = list(y = list(limits = c(4, 15)),
+                                          x = list(limits = c(6, 15))),
+                            axis = axis.default, nbin = 125, main = NULL, xlab = list(label = "BL1-H", cex = 1.5), ylab = list(label = "BL3-H", cex = 1.5),
+                            strip = strip.custom(factor.levels = c("Sterile PBS", "Sterile BHI", "Positive Control", "Heat Killed Control")),
+                            par.strip.text = list(col = "white", font = 1, cex = 1.5), smooth = FALSE)
+print(p_gating_strat_Av)
+
+p_gating_strat_Fn <- xyplot(`BL3-H`~`BL1-H`, data = flowData_transformed_Fn[c(13, 14, 19, 40)], filter = IntactDamagedGates_Fn,
+                            scales = list(y = list(limits = c(4, 15)),
+                                          x = list(limits = c(6, 15))),
+                            axis = axis.default, nbin = 125, main = NULL, xlab = list(label = "BL1-H", cex = 1.5), ylab = list(label = "BL3-H", cex = 1.5),
+                            strip = strip.custom(factor.levels = c("Sterile PBS", "Sterile BHI", "Positive Control", "Heat Killed Control")),
+                            par.strip.text = list(col = "white", font = 1, cex = 1.5), smooth = FALSE)
+print(p_gating_strat_Fn)
+
+# Subset flowData
+flowData_transformed_Av_gated_intact <- Subset(flowData_transformed_Av, polyGateIntact)
+flowData_transformed_Av_gated_damaged <- Subset(flowData_transformed_Av, polyGateDamaged)
+
+flowData_transformed_Fn_gated_intact <- Subset(flowData_transformed_Fn, polyGateIntact)
+flowData_transformed_Fn_gated_damaged <- Subset(flowData_transformed_Fn, polyGateDamaged)
+
+## 4.4. Cell concentrations ----
+### 4.4.1. Av ----
+# Cell counts (all cells)
+cells_Av <- flowCore::filter(flowData_transformed_Av, polyGateTotal)
+TotalCount_Av <- summary(cells_Av)
+TotalCount_Av <- toTable(TotalCount_Av)
+
+# Cell counts live and dead
+cellsintact_Av <- flowCore::filter(flowData_transformed_Av, polyGateIntact)
+TotalCountIntact_Av <- summary(cellsintact_Av); TotalCountIntact_Av <- toTable(TotalCountIntact_Av)
+
+cellsdamaged_Av <- flowCore::filter(flowData_transformed_Av, polyGateDamaged)
+TotalCountDamaged_Av <- summary(cellsdamaged_Av); TotalCountDamaged_Av <- toTable(TotalCountDamaged_Av)
+
+# Extracting volumes, volumes are in µL
+vol_Av <- as.numeric(flowCore::fsApply(flowData_transformed_Av, FUN = function(x) x@description$`$VOL`))/1000
+
+# Concentrations (total, live and dead), concentrations will be in cells/µL
+# Create a data frame with the sample names and cell concentration
+cell_concentrations_Av <- data.frame(Sample_name = flowCore::sampleNames(flowData_transformed_Av),
+                                     Strain = metadata_Av$Strain,
+                                     Compound = metadata_Av$Compound,
+                                     MOA = metadata_Av$MOA,
+                                     Sample = metadata_Av$Sample,
+                                     Concentration = (TotalCount_Av$true*metadata_Av$Dilution)/vol_Av,
+                                     ConcentrationIntact = (TotalCountIntact_Av$true*metadata_Av$Dilution)/vol_Av,
+                                     ConcentrationDamaged = (TotalCountDamaged_Av$true*metadata_Av$Dilution)/vol_Av)
+
+cell_oncentrations_Av_relative <- data.frame(RelativeIntact = cell_concentrations_Av$ConcentrationIntact/cell_concentrations_Av$Concentration,
+                                             RelativeDamaged = cell_concentrations_Av$ConcentrationDamaged/cell_concentrations_Av$Concentration)
+
+cell_concentrations_Av <- cbind(cell_concentrations_Av, cell_oncentrations_Av_relative)
+
+# Calculate average cell concentration for each gate, organism and treatment, as well as the standard deviation
+summary_concentrations_Av <- cell_concentrations_Av %>% 
+  group_by(Sample) %>% 
+  summarise(Conc_mean = mean(Concentration), Conc_sd = sd(Concentration),
+            ConcIntact_mean = mean(ConcentrationIntact), ConcIntact_sd = sd(ConcentrationIntact),
+            ConcDamaged_mean = mean(ConcentrationDamaged), ConcDamaged_sd = sd(ConcentrationDamaged),
+            ConcIntact_mean_rel = mean(RelativeIntact),
+            ConcDamaged_mean_rel = mean(RelativeDamaged))
+
+saveRDS(summary_concentrations_Av, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/Objects_plots/concentrations_Av_24h.rds")
+
+# Visualization of mean cell concentrations
+# Split data frame in two data frames containing mean and sd only
+summary_concentrations_Av_mean <- summary_concentrations_Av[ ,c(1, 2, 4, 6)]
+summary_concentrations_Av_sd <- summary_concentrations_Av[ ,c(1, 3, 5, 7)]
+
+# Melt data frames
+melted_concentrations_Av_mean <- reshape2::melt(data = summary_concentrations_Av_mean, id.vars = c("Sample"), value.name = "Mean")
+melted_concentrations_Av_sd <- reshape2::melt(data = summary_concentrations_Av_sd, id.vars = c("Sample"), value.name = "SD")
+
+# Merge melted data frames and delete double columns
+melted_concentrations_Av <- cbind(melted_concentrations_Av_mean, melted_concentrations_Av_sd)
+melted_concentrations_Av <- melted_concentrations_Av[c(1, 2, 3, 6)]
+
+# Plot the data 
+p_conc_Av <- ggplot(data = melted_concentrations_Av, aes(x = Sample, y = Mean, color = variable))+
+  geom_point(size = 4, alpha = 0.7)+
+  geom_errorbar(aes(ymin = Mean-SD, ymax = Mean+SD, color = variable), width = 0.4)+
+  scale_y_continuous(trans='log10', limits = c(10, 1000000))+
+  annotation_logticks(sides = 'l')+
+  theme_bw()+
+  scale_colour_manual(values = c(Conc_mean = "#1919ff", ConcIntact_mean = "#4daf4a", ConcDamaged_mean = "red"),
+                      labels = c("Total", "Intact", "Damaged"))+
+  labs(y = "Cell concentration (cells/µL)", x = "Sample", title = "Mean cell concentrations Av", color = "Population")+
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 22),
+        axis.text.x = element_text(angle = 45),
+        plot.title = element_text(size = 26, face = "bold"),
+        legend.title = element_text(size = 24),
+        legend.text = element_text(size = 22))
+print(p_conc_Av)
+
+
+### 4.4.2. Fn ----
+# Cell counts (all cells)
+cells_Fn <- flowCore::filter(flowData_transformed_Fn, polyGateTotal)
+TotalCount_Fn <- summary(cells_Fn)
+TotalCount_Fn <- toTable(TotalCount_Fn)
+
+# Cell counts live and dead
+cellsintact_Fn <- flowCore::filter(flowData_transformed_Fn, polyGateIntact)
+TotalCountIntact_Fn <- summary(cellsintact_Fn); TotalCountIntact_Fn <- toTable(TotalCountIntact_Fn)
+
+cellsdamaged_Fn <- flowCore::filter(flowData_transformed_Fn, polyGateDamaged)
+TotalCountDamaged_Fn <- summary(cellsdamaged_Fn); TotalCountDamaged_Fn <- toTable(TotalCountDamaged_Fn)
+
+# Extracting volumes
+# Volumes are in µL
+vol_Fn <- as.numeric(flowCore::fsApply(flowData_transformed_Fn, FUN = function(x) x@description$`$VOL`))/1000
+
+# Concentrations (total, live and dead), concentrations will be in cells/µL
+# Create a data frame with the sample names and cell concentration
+cell_concentrations_Fn <- data.frame(Sample_name = flowCore::sampleNames(flowData_transformed_Fn),
+                                     Strain = metadata_Fn$Strain,
+                                     Compound = metadata_Fn$Compound,
+                                     MOA = metadata_Fn$MOA,
+                                     Sample = metadata_Fn$Sample,
+                                     Concentration = (TotalCount_Fn$true*metadata_Fn$Dilution)/vol_Fn,
+                                     ConcentrationIntact = (TotalCountIntact_Fn$true*metadata_Fn$Dilution)/vol_Fn,
+                                     ConcentrationDamaged = (TotalCountDamaged_Fn$true*metadata_Fn$Dilution)/vol_Fn)
+
+cell_oncentrations_Fn_relative <- data.frame(RelativeIntact = cell_concentrations_Fn$ConcentrationIntact/cell_concentrations_Fn$Concentration,
+                                             RelativeDamaged = cell_concentrations_Fn$ConcentrationDamaged/cell_concentrations_Fn$Concentration)
+
+cell_concentrations_Fn <- cbind(cell_concentrations_Fn, cell_oncentrations_Fn_relative)
+
+# Calculate average cell concentration for each gate, organism and treatment, as well as the standard deviation
+summary_concentrations_Fn <- cell_concentrations_Fn %>% 
+  group_by(Sample) %>% 
+  summarise(Conc_mean = mean(Concentration), Conc_sd = sd(Concentration),
+            ConcIntact_mean = mean(ConcentrationIntact), ConcIntact_sd = sd(ConcentrationIntact),
+            ConcDamaged_mean = mean(ConcentrationDamaged), ConcDamaged_sd = sd(ConcentrationDamaged),
+            ConcIntact_mean_rel = mean(RelativeIntact),
+            ConcDamaged_mean_rel = mean(RelativeDamaged))
+
+saveRDS(summary_concentrations_Fn, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/Objects_plots/concentrations_Fn_24h.rds")
+
+# Visualization of mean cell concentrations
+# Split data frame in two data frames containing mean and sd only
+summary_concentrations_Fn_mean <- summary_concentrations_Fn[ ,c(1, 2, 4, 6)]
+summary_concentrations_Fn_sd <- summary_concentrations_Fn[ ,c(1, 3, 5, 7)]
+
+# Melt data frames
+melted_concentrations_Fn_mean <- reshape2::melt(data = summary_concentrations_Fn_mean, id.vars = c("Sample"), value.name = "Mean")
+melted_concentrations_Fn_sd <- reshape2::melt(data = summary_concentrations_Fn_sd, id.vars = c("Sample"), value.name = "SD")
+
+# Merge melted data frames and delete double columns
+melted_concentrations_Fn <- cbind(melted_concentrations_Fn_mean, melted_concentrations_Fn_sd)
+melted_concentrations_Fn <- melted_concentrations_Fn[c(1, 2, 3, 6)]
+
+# Plot the data 
+p_conc_Fn <- ggplot(data = melted_concentrations_Fn, aes(x = Sample, y = Mean, color = variable))+
+  geom_point(size = 4, alpha = 0.7)+
+  geom_errorbar(aes(ymin = Mean-SD, ymax = Mean+SD, color = variable), width = 0.4)+
+  scale_y_continuous(trans='log10', limits = c(10, 1000000))+
+  annotation_logticks(sides = 'l')+
+  theme_bw()+
+  scale_colour_manual(values = c(Conc_mean = "#1919ff", ConcIntact_mean = "#4daf4a", ConcDamaged_mean = "red"),
+                      labels = c("Total", "Intact", "Damaged"))+
+  labs(y = "Cell concentration (cells/µL)", x = "Sample", title = "Mean cell concentrations Fn", color = "Population")+
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 22),
+        axis.text.x = element_text(angle = 45),
+        plot.title = element_text(size = 26, face = "bold"),
+        legend.title = element_text(size = 24),
+        legend.text = element_text(size = 22))
+print(p_conc_Fn)
 
 # 5. Phenotypic diversity analysis raw data ----
 
@@ -2760,11 +2972,11 @@ print(p_PGMM_sample_Av)
 
 ### 6.1.4. Ordination of GMM output ----
 # Model excluding cephalothin
-rownames_GMM_Av_novel_compounds <- row.names(results_Av_novel_compounds)
+rownames_GMM_Av_novel_compounds <- row.names(results_Av_rel_novel_compounds)
 new_rownames_GMM_Av_novel_compounds <- gsub("^.*?nt_", "", rownames_GMM_Av_novel_compounds)
 new_rownames_GMM_Av_novel_compounds <- gsub("_100_SGPI", "", new_rownames_GMM_Av_novel_compounds)
 new_rownames_GMM_Av_novel_compounds <- gsub(".fcs", "", new_rownames_GMM_Av_novel_compounds)
-results_Av_ordination_novel_compounds <- results_Av_novel_compounds
+results_Av_ordination_novel_compounds <- results_Av_rel_novel_compounds
 rownames(results_Av_ordination_novel_compounds) <- new_rownames_GMM_Av_novel_compounds
 results_Av_ordination_novel_compounds <- as.matrix(results_Av_ordination_novel_compounds)
 
@@ -2806,6 +3018,9 @@ distance_GMM_Av_novel_compounds_noceph <- vegan::vegdist(x = results_Av_ordinati
 mds_GMM_Av_novel_compounds_noceph <- stats::cmdscale(distance_GMM_Av_novel_compounds_noceph, k = 2, eig = TRUE, add = TRUE)
 NMDS_GMM_Av_novel_compounds_noceph <- vegan::metaMDS(distance_GMM_Av_novel_compounds_noceph, autotransform = FALSE, k = 2, trymax = 100)
 
+saveRDS(object = mds_GMM_Av_novel_compounds_noceph, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/Objects_plots/mds_GMM_Av_novel_compounds_noceph_35.rds")
+saveRDS(object = NMDS_GMM_Av_novel_compounds_noceph, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/Objects_plots/NMDS_GMM_Av_novel_compounds_noceph_35.rds")
+
 metadata_Av_dist_noceph <- metadata_Av_dist[c(1, 5:72), ]
 
 plot_PCoA_GMM_Av_novel_compounds_noceph <- plot_beta_fcm(mds_GMM_Av_novel_compounds_noceph, color = as.factor(metadata_Av_dist_noceph$MOA), shape = as.factor(metadata_Av_dist_noceph$Compound), labels = list("Mode of Action", "Compound")) + 
@@ -2836,8 +3051,135 @@ plot_NMDS_GMM_Av_novel_compounds_noceph <- plot_beta_fcm(NMDS_GMM_Av_novel_compo
         legend.text = element_text(size = 22))
 print(plot_NMDS_GMM_Av_novel_compounds_noceph)
 
+# Adding ellipses to the ordinations
+NMDS_GMM_Av_visual <- as.data.frame(vegan::scores(NMDS_GMM_Av_novel_compounds_noceph))
+NMDS_GMM_Av_visual$Compound <- metadata_Av_dist_noceph$Compound
+NMDS_GMM_Av_visual$MOA <- metadata_Av_dist_noceph$MOA
+saveRDS(object = NMDS_GMM_Av_visual, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/Objects_plots/NMDS_GMM_Av_visual_24h.rds")
 
-### 6.1.5. Statistics ----
+compounds_visual <- c("Actinomycin D",
+                      "Amoxicillin",
+                      "Amoxiclav",
+                      "Azithromycin",
+                      "Chlorhexidine",
+                      "Ciprofloxacin",
+                      "Clindamycin",
+                      "Control",
+                      "Unincubated Control",
+                      "CPC",
+                      "Dicloxacillin",
+                      "Erythromycin",
+                      "Ethanol",
+                      "Heat",
+                      "Metronidazole",
+                      "Nitrofurazone",
+                      "Novobiocin",
+                      "Polymyxin B",
+                      "Puromycin",
+                      "Rifampicin",
+                      "Spectinomycin",
+                      "Sulfadiazine",
+                      "Tetracycline")
+
+plot_NMDS_GMM_Av_novel_compounds_noceph_ellipse <- ggplot(NMDS_GMM_Av_visual, aes(x = NMDS1, y = NMDS2))+
+  geom_point(size = 8, alpha = 0.7, aes(shape = Compound, color = MOA))+
+  labs(title = NULL, color = "Mechanism of Action", shape = "Compound", x = "NMDS1", y = "NMDS2")+
+  theme_bw()+
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 22),
+        plot.title = element_text(size = 26, face = "bold"),
+        legend.title = element_text(size = 24),
+        legend.text = element_text(size = 22))+
+  scale_color_manual(values = c("purple", "steelblue1", "blue", "seagreen3", "gray0", "red", "chartreuse", "darkgoldenrod1", "yellow4", "yellow1"),
+                     labels = c("Cell Wall Synthesis", "DNA Replication", "DNA Transcription", "Folic Acid Metabolism", "Heat", "Membrane Disruption", "Positive Control", "Protein Synthesis: 30S Inhibition", "Protein Synthesis: 50S Inhibition", "Protein Synthesis: tRNA Interference"))+
+  scale_shape_manual(values=c(1:4, 6:15, 35, 17, 18, 42, 16, 43, 60, 62, 94),
+                     labels = compounds_visual)+
+  stat_ellipse(aes(color = MOA), level = 0.95)
+print(plot_NMDS_GMM_Av_novel_compounds_noceph_ellipse)
+
+var_pcoa_Av_novel_compounds_noceph <- vegan::eigenvals(mds_GMM_Av_novel_compounds_noceph)/sum(vegan::eigenvals(mds_GMM_Av_novel_compounds_noceph))
+PcoA_Av_novel_compounds_noceph <- as.data.frame(mds_GMM_Av_novel_compounds_noceph$points)
+names(PcoA_Av_novel_compounds_noceph)[1:2] <- c("PCoA1", "PCoA2")
+PcoA_Av_novel_compounds_noceph$Compound <- metadata_Av_dist_noceph$Compound
+PcoA_Av_novel_compounds_noceph$MOA <- metadata_Av_dist_noceph$MOA
+saveRDS(object = PcoA_Av_novel_compounds_noceph, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/Objects_plots/PCoA_GMM_Av_visual_24h.rds")
+saveRDS(object = var_pcoa_Av_novel_compounds_noceph, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/Objects_plots/PCoA_GMM_Av_var_24h.rds")
+
+plot_PCoA_GMM_Av_novel_compounds_noceph_ellipse <- ggplot(PcoA_Av_novel_compounds_noceph, aes(x = PCoA1, y = PCoA2))+
+  geom_point(size = 8, alpha = 0.7, aes(shape = Compound, color = MOA))+
+  labs(title = NULL, color = "Mechanism of Action", shape = "Compound", x = paste0("PCoA1 (", round(100 * var_pcoa_Av_novel_compounds_noceph[1], 1), "%)"), y = paste0("PCoA2 (", round(100 * var_pcoa_Av_novel_compounds_noceph[2], 1), "%)")) +
+  theme_bw()+
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 22),
+        plot.title = element_text(size = 26, face = "bold"),
+        legend.title = element_text(size = 24),
+        legend.text = element_text(size = 22))+
+  scale_color_manual(values = c("purple", "steelblue1", "blue", "seagreen3", "gray0", "red", "chartreuse", "darkgoldenrod1", "yellow4", "yellow1"),
+                     labels = c("Cell Wall Synthesis", "DNA Replication", "DNA Transcription", "Folic Acid Metabolism", "Heat", "Membrane Disruption", "Positive Control", "Protein Synthesis: 30S Inhibition", "Protein Synthesis: 50S Inhibition", "Protein Synthesis: tRNA Interference"))+
+  scale_shape_manual(values=c(1:4, 6:15, 35, 17, 18, 42, 16, 43, 60, 62, 94),
+                     labels = compounds_visual)+
+  stat_ellipse(aes(color = MOA), level = 0.95)
+print(plot_PCoA_GMM_Av_novel_compounds_noceph_ellipse)
+
+
+### 6.1.5. Cluster analysis ----
+# Model excluding cephalothin, analysis excluding cephalothin
+labels_compounds_Av_noceph <- metadata_Av_dist_noceph$Compound
+labels_compounds_Av_noceph[10:12] <- "Unincubated Control"
+labels_compounds_Av_noceph[28:30] <- "Actinomycin D"
+labels_compounds_Av_noceph[46:48] <- "Polymyxin B"
+
+clust_Av_novel_compounds <- stats::hclust(d = distance_GMM_Av_novel_compounds_noceph)
+clust_Av_novel_compounds$labels <- labels_compounds_Av_noceph
+
+dendro_data_Av_novel_compounds <- clust_Av_novel_compounds %>% 
+  as.dendrogram() %>% 
+  dendro_data()
+
+dendro_data_Av_novel_compounds$labels$MOA <- dendro_data_Av_novel_compounds$labels$label
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Amoxicillin', 'Cell Wall Synthesis', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Amoxiclav', 'Cell Wall Synthesis', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Dicloxacillin', 'Cell Wall Synthesis', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Control', 'Control', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Unincubated Control', 'Control', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Ciprofloxacin', 'DNA Replication', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Metronidazole', 'DNA Replication', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Novobiocin', 'DNA Replication', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Rifampicin', 'DNA Transcription', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Actinomycin D', 'DNA Transcription', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Sulfadiazine', 'Folic Acid Metabolism', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Heat', 'Heat', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Chlorhexidine', 'Membrane Disruption', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Ethanol', 'Membrane Disruption', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('CPC', 'Membrane Disruption', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Polymyxin B', 'Membrane Disruption', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Spectinomycin', 'Protein Synthesis: 30S Inhibition', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Nitrofurazone', 'Protein Synthesis: 30S Inhibition', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Tetracycline', 'Protein Synthesis: 30S Inhibition', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Clindamycin', 'Protein Synthesis: 50S Inhibition', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Erythromycin', 'Protein Synthesis: 50S Inhibition', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Azithromycin', 'Protein Synthesis: 50S Inhibition', dendro_data_Av_novel_compounds$labels$MOA)
+dendro_data_Av_novel_compounds$labels$MOA <- gsub('Puromycin', 'Protein Synthesis: tRNA Interference', dendro_data_Av_novel_compounds$labels$MOA)
+
+saveRDS(object = dendro_data_Av_novel_compounds, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/Objects_plots/dendro_Av_24h.rds")
+
+plot_clust_Av_novel_compounds <- ggplot(segment(dendro_data_Av_novel_compounds))+
+  geom_segment(aes(x = x, y = y, xend = xend, yend = yend))+
+  geom_text(data = dendro_data_Av_novel_compounds$labels, aes(x = x, y = y, label = label, color = MOA), angle = 90, hjust = 1.2, fontface = 'bold')+
+  labs(x = "Compound", y = "Height", color = "Mechanism of Action")+
+  theme_bw()+
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 22),
+        plot.title = element_text(size = 26, face = "bold"),
+        legend.title = element_text(size = 24),
+        legend.text = element_text(size = 22))+
+  scale_color_manual(values = c("purple", "chartreuse", "steelblue1", "blue", "seagreen3", "gray0", "red", "darkgoldenrod1", "yellow4", "yellow1"))+
+  guides(color = guide_legend(override.aes = list(size = 12)))+
+  ylim(c(-0.2, 1))
+print(plot_clust_Av_novel_compounds)
+
+
+### 6.1.6. Statistics ----
 ### ANOSIM
 ano_GMM_Av_novel_compounds <- vegan::anosim(distance_GMM_Av_novel_compounds, metadata_Av_dist$MOA, distance = "bray", permutations = permutations)
 ano_GMM_Av_novel_compounds_export <- data.frame("ANOSIM Statistic R" = ano_GMM_Av_novel_compounds$statistic, "P" = ano_GMM_Av_novel_compounds$signif, "permutations" = ano_GMM_Av_novel_compounds$permutations)
@@ -3912,11 +4254,11 @@ print(p_PGMM_sample_Fn)
 
 ### 6.2.4. Ordination of GMM output ----
 # Model excluding cephalothin
-rownames_GMM_Fn_novel_compounds <- row.names(results_Fn_novel_compounds)
+rownames_GMM_Fn_novel_compounds <- row.names(results_Fn_rel_novel_compounds)
 new_rownames_GMM_Fn_novel_compounds <- gsub("^.*?nt_", "", rownames_GMM_Fn_novel_compounds)
 new_rownames_GMM_Fn_novel_compounds <- gsub("_100_SGPI", "", new_rownames_GMM_Fn_novel_compounds)
 new_rownames_GMM_Fn_novel_compounds <- gsub(".fcs", "", new_rownames_GMM_Fn_novel_compounds)
-results_Fn_ordination_novel_compounds <- results_Fn_novel_compounds
+results_Fn_ordination_novel_compounds <- results_Fn_rel_novel_compounds
 rownames(results_Fn_ordination_novel_compounds) <- new_rownames_GMM_Fn_novel_compounds
 results_Fn_ordination_novel_compounds <- as.matrix(results_Fn_ordination_novel_compounds)
 
@@ -3958,6 +4300,9 @@ distance_GMM_Fn_novel_compounds_noceph <- vegan::vegdist(x = results_Fn_ordinati
 mds_GMM_Fn_novel_compounds_noceph <- stats::cmdscale(distance_GMM_Fn_novel_compounds_noceph, k = 2, eig = TRUE, add = TRUE)
 NMDS_GMM_Fn_novel_compounds_noceph <- vegan::metaMDS(distance_GMM_Fn_novel_compounds_noceph, autotransform = FALSE, k = 2, trymax = 100)
 
+saveRDS(object = mds_GMM_Fn_novel_compounds_noceph, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/Objects_plots/mds_GMM_Fn_novel_compounds_noceph_35.rds")
+saveRDS(object = NMDS_GMM_Fn_novel_compounds_noceph, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/Objects_plots/NMDS_GMM_Fn_novel_compounds_noceph_35.rds")
+
 metadata_Fn_dist_noceph <- metadata_Fn_dist[c(1, 5:72), ]
 
 plot_PCoA_GMM_Fn_novel_compounds_noceph <- plot_beta_fcm(mds_GMM_Fn_novel_compounds_noceph, color = as.factor(metadata_Fn_dist_noceph$MOA), shape = as.factor(metadata_Fn_dist_noceph$Compound), labels = list("Mode of Action", "Compound")) + 
@@ -3988,7 +4333,136 @@ plot_NMDS_GMM_Fn_novel_compounds_noceph <- plot_beta_fcm(NMDS_GMM_Fn_novel_compo
         legend.text = element_text(size = 22))
 print(plot_NMDS_GMM_Fn_novel_compounds_noceph)
 
-### 6.2.5. Statistics ----
+# Adding ellipses to the ordinations
+NMDS_GMM_Fn_visual <- as.data.frame(vegan::scores(NMDS_GMM_Fn_novel_compounds_noceph))
+NMDS_GMM_Fn_visual$Compound <- metadata_Fn_dist_noceph$Compound
+NMDS_GMM_Fn_visual$MOA <- metadata_Fn_dist_noceph$MOA
+saveRDS(object = NMDS_GMM_Fn_visual, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/Objects_plots/NMDS_GMM_Fn_visual_24h.rds")
+
+compounds_visual <- c("Actinomycin D",
+                      "Amoxicillin",
+                      "Amoxiclav",
+                      "Azithromycin",
+                      "Chlorhexidine",
+                      "Ciprofloxacin",
+                      "Clindamycin",
+                      "Control",
+                      "Unincubated Control",
+                      "CPC",
+                      "Dicloxacillin",
+                      "Erythromycin",
+                      "Ethanol",
+                      "Heat",
+                      "Metronidazole",
+                      "Nitrofurazone",
+                      "Novobiocin",
+                      "Polymyxin B",
+                      "Puromycin",
+                      "Rifampicin",
+                      "Spectinomycin",
+                      "Sulfadiazine",
+                      "Tetracycline")
+
+plot_NMDS_GMM_Fn_novel_compounds_noceph_ellipse <- ggplot(NMDS_GMM_Fn_visual, aes(x = NMDS1, y = NMDS2))+
+  geom_point(size = 8, alpha = 0.7, aes(shape = Compound, color = MOA))+
+  labs(title = NULL, color = "Mechanism of Action", shape = "Compound", x = "NMDS1", y = "NMDS2")+
+  theme_bw()+
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 22),
+        plot.title = element_text(size = 26, face = "bold"),
+        legend.title = element_text(size = 24),
+        legend.text = element_text(size = 22))+
+  scale_color_manual(values = c("purple", "steelblue1", "blue", "seagreen3", "gray0", "red", "chartreuse", "darkgoldenrod1", "yellow4", "yellow1"),
+                     labels = c("Cell Wall Synthesis", "DNA Replication", "DNA Transcription", "Folic Acid Metabolism", "Heat", "Membrane Disruption", "Positive Control", "Protein Synthesis: 30S Inhibition", "Protein Synthesis: 50S Inhibition", "Protein Synthesis: tRNA Interference"))+
+  scale_shape_manual(values=c(1:4, 6:15, 35, 17, 18, 42, 16, 43, 60, 62, 94),
+                     labels = compounds_visual)+
+  stat_ellipse(aes(color = MOA), level = 0.95)
+print(plot_NMDS_GMM_Fn_novel_compounds_noceph_ellipse)
+
+var_pcoa_Fn_novel_compounds_noceph <- vegan::eigenvals(mds_GMM_Fn_novel_compounds_noceph)/sum(vegan::eigenvals(mds_GMM_Fn_novel_compounds_noceph))
+PcoA_Fn_novel_compounds_noceph <- as.data.frame(mds_GMM_Fn_novel_compounds_noceph$points)
+names(PcoA_Fn_novel_compounds_noceph)[1:2] <- c("PCoA1", "PCoA2")
+PcoA_Fn_novel_compounds_noceph$Compound <- metadata_Fn_dist_noceph$Compound
+PcoA_Fn_novel_compounds_noceph$MOA <- metadata_Fn_dist_noceph$MOA
+saveRDS(object = PcoA_Fn_novel_compounds_noceph, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/Objects_plots/PCoA_GMM_Fn_visual_24h.rds")
+saveRDS(object = var_pcoa_Fn_novel_compounds_noceph, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/Objects_plots/PCoA_GMM_Fn_var_24h.rds")
+
+
+plot_PCoA_GMM_Fn_novel_compounds_noceph_ellipse <- ggplot(PcoA_Fn_novel_compounds_noceph, aes(x = PCoA1, y = PCoA2))+
+  geom_point(size = 8, alpha = 0.7, aes(shape = Compound, color = MOA))+
+  labs(title = NULL, color = "Mechanism of Action", shape = "Compound", x = paste0("PCoA1 (", round(100 * var_pcoa_Fn_novel_compounds_noceph[1], 1), "%)"), y = paste0("PCoA2 (", round(100 * var_pcoa_Fn_novel_compounds_noceph[2], 1), "%)")) +
+  theme_bw()+
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 22),
+        plot.title = element_text(size = 26, face = "bold"),
+        legend.title = element_text(size = 24),
+        legend.text = element_text(size = 22))+
+  scale_color_manual(values = c("purple", "steelblue1", "blue", "seagreen3", "gray0", "red", "chartreuse", "darkgoldenrod1", "yellow4", "yellow1"),
+                     labels = c("Cell Wall Synthesis", "DNA Replication", "DNA Transcription", "Folic Acid Metabolism", "Heat", "Membrane Disruption", "Positive Control", "Protein Synthesis: 30S Inhibition", "Protein Synthesis: 50S Inhibition", "Protein Synthesis: tRNA Interference"))+
+  scale_shape_manual(values=c(1:4, 6:15, 35, 17, 18, 42, 16, 43, 60, 62, 94),
+                     labels = compounds_visual)+
+  stat_ellipse(aes(color = MOA), level = 0.95)
+print(plot_PCoA_GMM_Fn_novel_compounds_noceph_ellipse)
+
+
+### 6.2.5. Cluster analysis ----
+# Model excluding cephalothin, analysis excluding cephalothin
+labels_compounds_Fn_noceph <- metadata_Fn_dist_noceph$Compound
+labels_compounds_Fn_noceph[10:12] <- "Unincubated Control"
+labels_compounds_Fn_noceph[28:30] <- "Actinomycin D"
+labels_compounds_Fn_noceph[46:48] <- "Polymyxin B"
+
+clust_Fn_novel_compounds <- stats::hclust(d = distance_GMM_Fn_novel_compounds_noceph)
+clust_Fn_novel_compounds$labels <- labels_compounds_Fn_noceph
+
+dendro_data_Fn_novel_compounds <- clust_Fn_novel_compounds %>% 
+  as.dendrogram() %>% 
+  dendro_data()
+
+dendro_data_Fn_novel_compounds$labels$MOA <- dendro_data_Fn_novel_compounds$labels$label
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Amoxicillin', 'Cell Wall Synthesis', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Amoxiclav', 'Cell Wall Synthesis', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Dicloxacillin', 'Cell Wall Synthesis', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Control', 'Control', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Unincubated Control', 'Control', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Ciprofloxacin', 'DNA Replication', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Metronidazole', 'DNA Replication', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Novobiocin', 'DNA Replication', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Rifampicin', 'DNA Transcription', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Actinomycin D', 'DNA Transcription', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Sulfadiazine', 'Folic Acid Metabolism', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Heat', 'Heat', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Chlorhexidine', 'Membrane Disruption', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Ethanol', 'Membrane Disruption', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('CPC', 'Membrane Disruption', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Polymyxin B', 'Membrane Disruption', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Spectinomycin', 'Protein Synthesis: 30S Inhibition', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Nitrofurazone', 'Protein Synthesis: 30S Inhibition', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Tetracycline', 'Protein Synthesis: 30S Inhibition', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Clindamycin', 'Protein Synthesis: 50S Inhibition', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Erythromycin', 'Protein Synthesis: 50S Inhibition', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Azithromycin', 'Protein Synthesis: 50S Inhibition', dendro_data_Fn_novel_compounds$labels$MOA)
+dendro_data_Fn_novel_compounds$labels$MOA <- gsub('Puromycin', 'Protein Synthesis: tRNA Interference', dendro_data_Fn_novel_compounds$labels$MOA)
+
+saveRDS(object = dendro_data_Fn_novel_compounds, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/Objects_plots/dendro_Fn_24h.rds")
+
+plot_clust_Fn_novel_compounds <- ggplot(segment(dendro_data_Fn_novel_compounds))+
+  geom_segment(aes(x = x, y = y, xend = xend, yend = yend))+
+  geom_text(data = dendro_data_Fn_novel_compounds$labels, aes(x = x, y = y, label = label, color = MOA), angle = 90, hjust = 1.2, fontface = 'bold')+
+  labs(x = "Compound", y = "Height", color = "Mechanism of Action")+
+  theme_bw()+
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 22),
+        plot.title = element_text(size = 26, face = "bold"),
+        legend.title = element_text(size = 24),
+        legend.text = element_text(size = 22))+
+  scale_color_manual(values = c("purple", "chartreuse", "steelblue1", "blue", "seagreen3", "gray0", "red", "darkgoldenrod1", "yellow4", "yellow1"))+
+  guides(color = guide_legend(override.aes = list(size = 12)))+
+  ylim(c(-0.2, 1))
+print(plot_clust_Fn_novel_compounds)
+
+
+### 6.2.6. Statistics ----
 ### ANOSIM
 ano_GMM_Fn_novel_compounds <- vegan::anosim(distance_GMM_Fn_novel_compounds, metadata_Fn_dist$MOA, distance = "bray", permutations = permutations)
 ano_GMM_Fn_novel_compounds_export <- data.frame("ANOSIM Statistic R" = ano_GMM_Fn_novel_compounds$statistic, "P" = ano_GMM_Fn_novel_compounds$signif, "permutations" = ano_GMM_Fn_novel_compounds$permutations)
@@ -4961,7 +5435,7 @@ PhenoGMM_noneg_novel_compounds <- Phenoflow::PhenoGMM(fcs_x = fcs_PGMM_novel_com
 saveRDS(object = PhenoGMM_noneg_novel_compounds, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/GMMFits/BothStrains_24h_PhenoGMM_8param_10to80per10_novel_compounds.rds")
 
 # Visualization of BIC values
-#PhenoGMM_noneg_novel_compounds <- readRDS(file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/GMMFits/BothStrains_24h_PhenoGMM_8param_10to80per10_novel_compounds.rds") # Call for results that are to be plotted
+#PhenoGMM_noneg_novel_compounds <- readRDS(file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/GMMFits/BothStrains_35h_PhenoGMM_8param_10to80per10_novel_compounds.rds") # Call for results that are to be plotted
 NoClusters_PGMM <- dimnames(PhenoGMM_noneg_novel_compounds[[2]]$BIC)[[1]]
 BICValues_PGMM <- data.frame(as.matrix(PhenoGMM_noneg_novel_compounds[[2]]$BIC)[1:length(NoClusters_PGMM), ])
 BICValues_PGMM$NoClusters <- rownames(BICValues_PGMM)
@@ -4988,9 +5462,9 @@ print(p_BIC_PGMM_novel_compounds)
 ### 6.3.2. Allocation data to model ----
 ## Make model for optimum clusters determined in previous step (excluding Cephalothin)
 NoClusters_PGMM_novel_compounds <- 60
-PhenoGMM_fixedclust_novel_compounds <- Phenoflow::PhenoGMM(fcs_x = fcs_PGMM_novel_compounds, param = paramGMM, downsample = FALSE, nG = NoClusters_PGMM_novel_compounds, fcs_scale = FALSE, diagnostic_plot = TRUE)
-saveRDS(object = PhenoGMM_fixedclust_novel_compounds, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/GMMFits/BothStrains_24h_PhenoGMM_8param_60clust_novel_compounds.rds")
-#PhenoGMM_fixedclust_novel_compounds <- readRDS(file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/GMMFits/BothStrains_24h_PhenoGMM_8param_60clust_novel_compounds.rds") # Call for results that are to be plotted
+#PhenoGMM_fixedclust_novel_compounds <- Phenoflow::PhenoGMM(fcs_x = fcs_PGMM_novel_compounds, param = paramGMM, downsample = FALSE, nG = NoClusters_PGMM_novel_compounds, fcs_scale = FALSE, diagnostic_plot = TRUE)
+#saveRDS(object = PhenoGMM_fixedclust_novel_compounds, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/GMMFits/BothStrains_24h_PhenoGMM_8param_60clust_novel_compounds.rds")
+PhenoGMM_fixedclust_novel_compounds <- readRDS(file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/GMMFits/BothStrains_24h_PhenoGMM_8param_60clust_novel_compounds.rds") # Call for results that are to be plotted
 
 # Applying mask to data
 testPred_novel_compounds <- PhenoMaskGMM(fcs_x = flowData_transformed_GMM_novel_compounds, gmm = PhenoGMM_fixedclust_novel_compounds, fcs_scale = FALSE)
@@ -5004,18 +5478,21 @@ results_novel_compounds[1:ncol(results_novel_compounds)] <- lapply(results_novel
 results_rel_novel_compounds <- sweep(results_novel_compounds, MARGIN = 1, rowSums(results_novel_compounds), `/`)
 
 ### 6.3.3. Ordination of GMM output ----
-rownames_GMM_novel_compounds <- row.names(results_novel_compounds)
+rownames_GMM_novel_compounds <- row.names(results_rel_novel_compounds)
 new_rownames_GMM_novel_compounds <- gsub("^.*?MOA_", "", rownames_GMM_novel_compounds)
 new_rownames_GMM_novel_compounds <- gsub("_Experiment", "", new_rownames_GMM_novel_compounds)
 new_rownames_GMM_novel_compounds <- gsub("_100_SGPI", "", new_rownames_GMM_novel_compounds)
 new_rownames_GMM_novel_compounds <- gsub(".fcs", "", new_rownames_GMM_novel_compounds)
-results_ordination_novel_compounds <- results_novel_compounds
+results_ordination_novel_compounds <- results_rel_novel_compounds
 rownames(results_ordination_novel_compounds) <- new_rownames_GMM_novel_compounds
 results_ordination_novel_compounds <- as.matrix(results_ordination_novel_compounds)
 
 distance_GMM_novel_compounds <- vegan::vegdist(x = results_ordination_novel_compounds, method = "bray", binary = FALSE)
 mds_GMM_novel_compounds <- stats::cmdscale(distance_GMM_novel_compounds, k = 2, eig = TRUE, add = TRUE)
 NMDS_GMM_novel_compounds <- vegan::metaMDS(distance_GMM_novel_compounds, autotransform = FALSE, k = 2, trymax = 100)
+
+saveRDS(mds_GMM_novel_compounds, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/Objects_plots/mds_GMM_novel_compounds_noceph_24.rds")
+saveRDS(NMDS_GMM_novel_compounds, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/Objects_plots/NMDS_GMM_novel_compounds_noceph_24.rds")
 
 # Plot ordination
 plot_PCoA_GMM_novel_compounds <- plot_beta_fcm_custom(mds_GMM_novel_compounds, color = as.factor(metadata_GMM_novel_compounds$MOA), shape = as.factor(metadata_GMM_novel_compounds$Compound), size = as.factor(metadata_GMM_novel_compounds$Strain))+ 

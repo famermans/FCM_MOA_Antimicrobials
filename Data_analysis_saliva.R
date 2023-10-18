@@ -368,15 +368,17 @@ results_D2_NoMDNoH <- select(results_D2_NoMDNoH, -c(Sample_names))
 results_D2_NoMDNoH[is.na(results_D2_NoMDNoH)] <- 0 # Replace NA values by 0
 results_D2_NoMDNoH[1:ncol(results_D2_NoMDNoH)] <- lapply(results_D2_NoMDNoH[1:ncol(results_D2_NoMDNoH)], as.numeric)
 
+results_D2_NoMDNoH_rel <- sweep(results_D2_NoMDNoH, MARGIN = 1, rowSums(results_D2_NoMDNoH), `/`)
 
-### 6.3. Ordination of GMM output ----
-distance_GMM_D2_NoMDNoH <- vegan::vegdist(x = results_D2_NoMDNoH, method = "bray", binary = FALSE)
+
+## 6.3. Ordination of GMM output ----
+distance_GMM_D2_NoMDNoH <- vegan::vegdist(x = results_D2_NoMDNoH_rel, method = "bray", binary = FALSE)
 mds_GMM_D2_NoMDNoH <- stats::cmdscale(distance_GMM_D2_NoMDNoH, k = 2, eig = TRUE, add = TRUE)
 NMDS_GMM_D2_NoMDNoH <- vegan::metaMDS(distance_GMM_D2_NoMDNoH, autotransform = FALSE, k = 2, trymax = 100)
 
 plot_PCoA_GMM_D2_NoMDNoH <- plot_beta_fcm(mds_GMM_D2_NoMDNoH, color = as.factor(metadata_D2_resample_NoMDNoH$MOA), shape = as.factor(metadata_D2_resample_NoMDNoH$Compound), labels = list("Mode of Action", "Compound")) + 
   theme_bw() +
-  geom_point(size = 8, alpha = 0.7)+
+  geom_point(size = 14, alpha = 1, stroke = 1)+
   labs(title = NULL)+
   scale_color_manual(values = c("red", "#1919ff", "#4daf4a", "darkgoldenrod3"),
                      labels = c("Cell Wall Synthesis", "DNA Replication", "Control", "Protein Synthesis: 50S Inhibition"))+
@@ -393,7 +395,7 @@ print(plot_PCoA_GMM_D2_NoMDNoH)
 
 plot_NMDS_GMM_D2_NoMDNoH <- plot_beta_fcm(NMDS_GMM_D2_NoMDNoH, color = as.factor(metadata_D2_resample_NoMDNoH$MOA), shape = as.factor(metadata_D2_resample_NoMDNoH$Compound), labels = list("Mode of Action", "Compound")) + 
   theme_bw() +
-  geom_point(size = 8, alpha = 0.7)+
+  geom_point(size = 14, alpha = 1, stroke = 1)+
   labs(title = NULL, x = "NMDS1", y = "NMDS2")+
   scale_color_manual(values = c("red", "#1919ff", "#4daf4a", "darkgoldenrod3"),
                      labels = c("Cell Wall Synthesis", "DNA Replication", "Control", "Protein Synthesis: 50S Inhibition"))+
@@ -407,3 +409,94 @@ plot_NMDS_GMM_D2_NoMDNoH <- plot_beta_fcm(NMDS_GMM_D2_NoMDNoH, color = as.factor
         legend.position = "bottom")+
   guides(color = guide_legend(ncol = 1, title.position = "top"), shape = guide_legend(ncol = 2, title.position = "top"), size = guide_legend(ncol = 1, title.position = "top"))
 print(plot_NMDS_GMM_D2_NoMDNoH)
+
+# Adding ellipses to the ordinations
+NMDS_GMM_D2_NoMDNoH_visual <- as.data.frame(vegan::scores(NMDS_GMM_D2_NoMDNoH))
+NMDS_GMM_D2_NoMDNoH_visual$Compound <- metadata_D2_resample_NoMDNoH$Compound
+NMDS_GMM_D2_NoMDNoH_visual$MOA <- metadata_D2_resample_NoMDNoH$MOA
+saveRDS(object = NMDS_GMM_D2_NoMDNoH_visual, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/Objects_plots/NMDS_GMM_D2_visual_24h.rds")
+
+plot_NMDS_GMM_D2_NoMDNoH_ellipse <- ggplot(NMDS_GMM_D2_NoMDNoH_visual, aes(x = NMDS1, y = NMDS2))+
+  geom_point(size = 14, alpha = 1, stroke = 1, aes(shape = Compound, color = MOA))+
+  labs(title = NULL, color = "Mechanism of Action", shape = "Compound", x = "NMDS1", y = "NMDS2")+
+  theme_bw() +
+  scale_color_manual(values = c("red", "#1919ff", "#4daf4a", "darkgoldenrod3"),
+                     labels = c("Cell Wall Synthesis", "DNA Replication", "Control", "Protein Synthesis: 50S Inhibition"))+
+  scale_shape_manual(values=c(1, 2, 5:8, 10, 11))+
+  theme(axis.text = element_text(size = 20),
+        axis.title = element_text(size = 26),
+        plot.title = element_text(size = 30, face = "bold"),
+        legend.title = element_text(size = 30),
+        legend.text = element_text(size = 26),
+        legend.text.align = 0,
+        legend.position = "bottom")+
+  guides(color = guide_legend(ncol = 1, title.position = "top"), shape = guide_legend(ncol = 2, title.position = "top"), size = guide_legend(ncol = 1, title.position = "top"))+
+  stat_ellipse(aes(color = MOA), level = 0.95)
+print(plot_NMDS_GMM_D2_NoMDNoH_ellipse)
+
+var_pcoa_D2_NoMDNoH <- vegan::eigenvals(mds_GMM_D2_NoMDNoH)/sum(vegan::eigenvals(mds_GMM_D2_NoMDNoH))
+PcoA_D2_NoMDNoH <- as.data.frame(mds_GMM_D2_NoMDNoH$points)
+names(PcoA_D2_NoMDNoH)[1:2] <- c("PCoA1", "PCoA2")
+PcoA_D2_NoMDNoH$Compound <- metadata_D2_resample_NoMDNoH$Compound
+PcoA_D2_NoMDNoH$MOA <- metadata_D2_resample_NoMDNoH$MOA
+saveRDS(object = PcoA_D2_NoMDNoH, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/Objects_plots/PCoA_GMM_D2_visual_24h.rds")
+saveRDS(object = var_pcoa_D2_NoMDNoH, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/Objects_plots/PCoA_GMM_D2_var_24h.rds")
+
+plot_PCoA_GMM_D2_NoMDNoH_ellipse <- ggplot(PcoA_D2_NoMDNoH, aes(x = PCoA1, y = PCoA2))+
+  geom_point(size = 14, alpha = 1, stroke = 1, aes(shape = Compound, color = MOA))+
+  labs(title = NULL, color = "Mechanism of Action", shape = "Compound", x = paste0("PCoA1 (", round(100 * var_pcoa_D2_NoMDNoH[1], 1), "%)"), y = paste0("PCoA2 (", round(100 * var_pcoa_D2_NoMDNoH[2], 1), "%)")) +
+  theme_bw() +
+  scale_color_manual(values = c("red", "#1919ff", "#4daf4a", "darkgoldenrod3"),
+                     labels = c("Cell Wall Synthesis", "DNA Replication", "Control", "Protein Synthesis: 50S Inhibition"))+
+  scale_shape_manual(values=c(1, 2, 5:8, 10, 11))+
+  theme(axis.text = element_text(size = 20),
+        axis.title = element_text(size = 26),
+        plot.title = element_text(size = 30, face = "bold"),
+        legend.title = element_text(size = 30),
+        legend.text = element_text(size = 26),
+        legend.text.align = 0,
+        legend.position = "bottom")+
+  guides(color = guide_legend(ncol = 1, title.position = "top"), shape = guide_legend(ncol = 2, title.position = "top"), size = guide_legend(ncol = 1, title.position = "top"))+
+  stat_ellipse(aes(color = MOA), level = 0.95)
+print(plot_PCoA_GMM_D2_NoMDNoH_ellipse)
+
+
+## 6.4. Cluster analysis ----
+labels_compounds_D2 <- metadata_D2_resample_NoMDNoH$Compound
+
+clust_D2 <- stats::hclust(d = distance_GMM_D2_NoMDNoH)
+clust_D2$labels <- labels_compounds_D2
+
+dendro_data_D2 <- clust_D2 %>% 
+  as.dendrogram() %>% 
+  dendro_data()
+
+dendro_data_D2$labels$MOA <- dendro_data_D2$labels$label
+dendro_data_D2$labels$MOA <- gsub('Amoxicillin', 'Cell Wall Synthesis', dendro_data_D2$labels$MOA)
+dendro_data_D2$labels$MOA <- gsub('Amoxiclav', 'Cell Wall Synthesis', dendro_data_D2$labels$MOA)
+dendro_data_D2$labels$MOA <- gsub('Control', 'Control', dendro_data_D2$labels$MOA)
+dendro_data_D2$labels$MOA <- gsub('Ciprofloxacin', 'DNA Replication', dendro_data_D2$labels$MOA)
+dendro_data_D2$labels$MOA <- gsub('Metronidazole', 'DNA Replication', dendro_data_D2$labels$MOA)
+dendro_data_D2$labels$MOA <- gsub('Clindamycin', 'Protein Synthesis: 50S Inhibition', dendro_data_D2$labels$MOA)
+dendro_data_D2$labels$MOA <- gsub('Erythromycin', 'Protein Synthesis: 50S Inhibition', dendro_data_D2$labels$MOA)
+dendro_data_D2$labels$MOA <- gsub('Azithromycin', 'Protein Synthesis: 50S Inhibition', dendro_data_D2$labels$MOA)
+
+saveRDS(object = dendro_data_D2, file = "/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Project/Objects_plots/dendro_D2_24h.rds")
+
+plot_clust_D2 <- ggplot(segment(dendro_data_D2))+
+  geom_segment(aes(x = x, y = y, xend = xend, yend = yend))+
+  geom_text(data = dendro_data_D2$labels, aes(x = x, y = y, label = label, color = MOA), angle = 90, hjust = 1.2, fontface = 'bold', size = 8)+
+  labs(x = "Compound", y = "Height", color = "Mechanism of Action")+
+  theme_bw()+
+  theme(axis.text = element_text(size = 18),
+        axis.title = element_text(size = 22),
+        plot.title = element_text(size = 26, face = "bold"),
+        legend.title = element_text(size = 26),
+        legend.text = element_text(size = 24),
+        legend.position = "right",
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+  scale_color_manual(values = c("red", "#1919ff", "#4daf4a", "darkgoldenrod3"))+
+  guides(color = guide_legend(ncol = 1, title.position = "top", override.aes = list(size = 12)))+
+  ylim(c(-0.2, 1))
+print(plot_clust_D2)

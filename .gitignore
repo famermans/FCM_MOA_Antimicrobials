@@ -7,3 +7,4 @@ models_rds/
 Objects_plots/
 *.png
 *.csv
+*.jpeg
