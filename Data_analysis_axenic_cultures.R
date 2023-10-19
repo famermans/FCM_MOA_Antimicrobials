@@ -2905,9 +2905,9 @@ source("/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Projec
 
 ## Relative abundance
 # Visualization PhenoGMM model (excluding Cephalothin in construction of GMM model)
-results_Av_rel_novel_compounds <- results_Av_rel_novel_compounds %>% 
+results_Av_rel_novel_compounds_visual <- results_Av_rel_novel_compounds %>% 
   add_column(Sample_name = metadata_Av_noneg$Sample_complete)
-results_Av_rel_novel_compounds_melted <- melt(results_Av_rel_novel_compounds, id.vars = "Sample_name")
+results_Av_rel_novel_compounds_melted <- melt(results_Av_rel_novel_compounds_visual, id.vars = "Sample_name")
 
 p_PhenoGMM_Av_novel_compounds <- results_Av_rel_novel_compounds_melted %>% 
   ggplot(data = ., aes(x = Sample_name, y = value, fill = variable)) +
@@ -4187,9 +4187,9 @@ source("/Projects1/Fabian/Oral_microbiome/MOA_Antibiotics/MOA_Antibiotics_Projec
 
 ## Relative abundance
 # Visualization PhenoGMM model (excluding Cephalothin in construction of GMM model)
-results_Fn_rel_novel_compounds <- results_Fn_rel_novel_compounds %>% 
+results_Fn_rel_novel_compounds_visual <- results_Fn_rel_novel_compounds %>% 
   add_column(Sample_name = metadata_Fn_noneg$Sample_complete)
-results_Fn_rel_novel_compounds_melted <- melt(results_Fn_rel_novel_compounds, id.vars = "Sample_name")
+results_Fn_rel_novel_compounds_melted <- melt(results_Fn_rel_novel_compounds_visual, id.vars = "Sample_name")
 
 p_PhenoGMM_Fn_novel_compounds <- results_Fn_rel_novel_compounds_melted %>% 
   ggplot(data = ., aes(x = Sample_name, y = value, fill = variable)) +
